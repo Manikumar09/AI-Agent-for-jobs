@@ -3,30 +3,66 @@ on:
   schedule:
     - cron: '30 3,15 * * *'
   workflow_dispatch:
+    inputs:
+      bootstrap:
+        description: 'First run only: allow empty state (later use may repeat jobs)'
+        type: boolean
+        default: false
+      application_id:
+        description: 'Optional: ID of a job YOU have successfully submitted'
+        type: string
+      evidence:
+        description: 'Submission confirmation reference (required with application ID)'
+        type: string
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: job-agent-production
   cancel-in-progress: false
 jobs:
   search:
-    # Configure a dedicated VM runner. Never run pull-request code on it.
-    if: vars.JOB_AGENT_ENABLED == 'true'
-    runs-on: [self-hosted, linux, job-agent]
-    timeout-minutes: 90
+    if: vars.JOB_AGENT_ENABLED == 'true' && github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      JOB_AGENT_HOME: ${{ runner.temp }}/job-agent-home
+      STATE_KEY: ${{ secrets.STATE_KEY }}
     steps:
-      # Persistent deployment is deliberately outside Actions' ephemeral checkout.
-      # Deploy reviewed code with git pull on the VM; no untrusted PR checkout here.
-      - name: Run installed agent
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -e .
+      - name: Restore private configuration and encrypted state
+        id: restore
         env:
-          JOB_AGENT_INSTALL_DIR: ${{ vars.JOB_AGENT_INSTALL_DIR }}
-          JOB_AGENT_HOME: ${{ vars.JOB_AGENT_HOME }}
+          PROFILE_YAML: ${{ secrets.PROFILE_YAML }}
+          RESUME_GZIP_B64: ${{ secrets.RESUME_GZIP_B64 }}
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          ALLOW_BOOTSTRAP: ${{ github.event_name == 'workflow_dispatch' && inputs.bootstrap && 'true' || 'false' }}
+        run: python scripts/cloud.py restore
+      - name: Record user-confirmed submission
+        env:
+          APPLICATION_ID: ${{ inputs.application_id }}
+          APPLICATION_EVIDENCE: ${{ inputs.evidence }}
+        run: python scripts/cloud.py confirm
+      - name: Search and send digest
+        env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          DIGEST_TO: ${{ secrets.DIGEST_TO }}
-        run: |
-          test -n "$JOB_AGENT_INSTALL_DIR"
-          test -n "$JOB_AGENT_HOME"
-          bash "$JOB_AGENT_INSTALL_DIR/run.sh"
+        run: python -m jobagent.cli run
+      - name: Encrypt checkpoint (including partial progress)
+        if: always() && steps.restore.outcome == 'success'
+        run: python scripts/cloud.py save
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.restore.outcome == 'success'
+        with:
+          name: job-agent-checkpoint
+          path: checkpoint.enc
+          if-no-files-found: error
+          retention-days: 7

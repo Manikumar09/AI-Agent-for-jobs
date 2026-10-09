@@ -34,13 +34,16 @@ Score fit 0-100 for an engineer with the stated experience, seeking India or rem
 Mark location_eligible false if location or remote eligibility is unclear or excludes India.
 List required skills not evidenced by resume separately. Learning a technology does not mean production expertise.
 Select up to five original paragraph IDs that best support this application. Do not generate resume claims.
-Return structured analysis only.\n'''
+Extract salary_max_lpa only when the JD explicitly gives an annual INR salary/CTC budget, converting INR to lakhs (100000 INR per lakh). Set salary_explicit_annual_inr true only in that case and copy the exact supporting JD text to salary_quote. Otherwise use null and false. Never estimate salary from company or title. Return structured analysis only.\n'''
     payload = {'experience_years': config['experience_years'], 'resume_evidence': source, 'job': job.model_dump()}
     for attempt in range(3):
         try:
             response = client.models.generate_content(model=os.environ['GEMINI_MODEL'],
                 contents=prompt + json.dumps(payload), config={'response_mime_type': 'application/json', 'response_schema': Analysis, 'temperature': 0})
-            return validate(Analysis.model_validate_json(response.text), source)
+            result = validate(Analysis.model_validate_json(response.text), source)
+            if result.salary_explicit_annual_inr and (not result.salary_quote or result.salary_quote not in job.description):
+                raise ValueError('Salary evidence not present in JD')
+            return result
         except Exception as exc:
             if attempt == 2 or not any(s in str(exc) for s in ('429', '503', '500')):
                 raise

@@ -13,3 +13,6 @@ profile.yaml
 
 .run.lock
 dry-run/
+
+checkpoint.enc
+.checkpoint-ready

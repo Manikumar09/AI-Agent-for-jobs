@@ -60,6 +60,8 @@ def build(store, out, at, errors):
         files.append(Path(row['resume']))
     unverified = [r for r in store.rows() if r['freshness'] == 'unverified' and r['status'] == 'time_unverified']
     lines.append(f'{len(unverified)} postings held for unverified publication times. See report / job-agent list.')
+    rating_pending = sum(r['status'] == 'rating_pending' for r in store.rows())
+    lines.append(f'{rating_pending} companies awaiting verified rating evidence (must be above 3.5/5).')
     if errors:
         lines.extend(['SOURCE ERRORS:', *errors])
     text = '\n'.join(lines)
