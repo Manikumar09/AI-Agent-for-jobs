@@ -26,9 +26,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      JOB_AGENT_HOME: ${{ runner.temp }}/job-agent-home
       STATE_KEY: ${{ secrets.STATE_KEY }}
     steps:
+      - name: Set private working directory
+        run: echo "JOB_AGENT_HOME=$RUNNER_TEMP/job-agent-home" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
