@@ -33,7 +33,7 @@ def run(config, root, dry_run, fixture=None):
     output.mkdir(parents=True, exist_ok=True)
     attempted = 0
     for row in store.rows():
-        if row['status'] not in ('discovered', 'analysis_error', 'time_unverified'):
+        if row['status'] not in ('discovered', 'analysis_error', 'time_unverified', 'rating_pending', 'rating_below_threshold'):
             continue
         job = Job.model_validate_json(row['payload'])
         fresh = freshness(job, at)
@@ -43,6 +43,12 @@ def run(config, root, dry_run, fixture=None):
             continue
         if fresh == 'unverified' and not config.get('include_unverified', False):
             store.update(row['id'], status='time_unverified')
+            continue
+        from .ratings import company_status
+        from zoneinfo import ZoneInfo
+        rating = company_status(job.company, config, at.astimezone(ZoneInfo('Asia/Kolkata')).date())
+        if rating != 'eligible':
+            store.update(row['id'], status=rating)
             continue
         if not job.description.strip():
             errors.append(f'{job.id}: description missing; will retry discovery next run')
@@ -56,6 +62,10 @@ def run(config, root, dry_run, fixture=None):
             continue
         try:
             analysis = analyze(job, source, config)
+            minimum = config.get('salary_preference', {}).get('minimum_lpa')
+            if minimum is not None and analysis.salary_explicit_annual_inr and analysis.salary_max_lpa is not None and analysis.salary_max_lpa < minimum:
+                store.update(row['id'], status='salary_below_target', analysis=analysis.model_dump_json())
+                continue
             if analysis.score < config['minimum_score'] or not analysis.location_eligible or not analysis.highlight_ids:
                 store.update(row['id'], status='not_selected', analysis=analysis.model_dump_json())
                 continue

@@ -14,8 +14,8 @@ A Python agent for Site Reliability Engineer, Observability Engineer and DevOps 
 | Skill gaps | Listed in digest, never inserted into the resume as skills you possess |
 | Email | Gmail SMTP over TLS; prepared DOCX attachments, application URLs, daily XLSX activity and source failures |
 | Apply | Local/headed Playwright helper fills exact recognized contact labels; you handle login, custom questions, upload fallback and final submission |
-| State | Persistent SQLite on the VM, separate statuses and manual submission confirmation |
-| Schedule | Linux cron or GitHub Actions controlling a dedicated self-hosted VM runner |
+| State | SQLite restored from an encrypted Actions checkpoint, separate statuses and manual submission confirmation |
+| Schedule | GitHub-hosted Ubuntu Actions runner at 09:00/21:00 IST; optional Linux cron |
 
 This is a reviewable first implementation, not a guarantee that every job board/form works. No model by itself can discover jobs, render files, schedule tasks and submit forms: this repository coordinates those components.
 
@@ -95,18 +95,63 @@ CRON_TZ=Asia/Kolkata
 
 If `CRON_TZ` is unsupported, use a UTC-configured machine and `30 3,15 * * *`. Setting only `TZ` inside the command does not change the cron trigger time. `run.sh` uses a restrictive umask, and Python holds an advisory lock to prevent overlapping scheduled runs. Dry runs never alter production state. Rotate your private log with the VM's logrotate facility.
 
-## Scheduling option B: GitHub Actions + persistent VM
+## Scheduling option B: GitHub-hosted Actions (selected)
 
-The provided workflow uses a **self-hosted** runner labelled `linux` and `job-agent`, not an ephemeral GitHub-hosted runner. This deliberately avoids keeping a personal database in Git or relying on evictable Actions caches. GitHub's schedule is `30 3,15 * * *` UTC; scheduled runs can be delayed. Scheduling starts only on the default branch and after configuration.
+Uses `ubuntu-latest`; no VM or self-hosted runner is required. The cron is `30 3,15 * * *` UTC (09:00/21:00 IST). GitHub scheduled runs can start late, so this is not an exact-time SLA. Each run looks back 12 hours from its actual start. Merge the pull request to the default branch before activating.
 
-1. Prefer a private repository for the runner setup. This repository was public at implementation time; do not add private files or expose a self-hosted runner to untrusted workflows/PRs.
-2. Install reviewed code and the profile on the VM outside the runner's checkout directory, using the quick start above. Use an account without unnecessary system privileges.
-3. Configure a dedicated GitHub Actions runner with label `job-agent`. The scheduled workflow executes installed code; it does not fetch PR code. After reviewing updates, deploy them manually on the VM.
-4. Add repository secrets: `GEMINI_API_KEY`, `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD`, `DIGEST_TO`.
-5. Add variables: `GEMINI_MODEL`, `JOB_AGENT_INSTALL_DIR` (absolute checkout path), `JOB_AGENT_HOME` (absolute directory containing profile.yaml/private/state; can equal install directory), and finally `JOB_AGENT_ENABLED=true`.
-6. Merge the workflow, run it manually once, confirm the email and report, then leave the schedule enabled. Do not also enable cron.
+### Private configuration
 
-No credential or runner has been provisioned by generating this code. No live search, LLM scoring, email or application submission was performed during development. GitHub-hosted runner mode with encrypted durable remote state can be added later; it is not implemented here.
+After the quick-start `init`, run locally with GitHub CLI authenticated (`gh auth login`):
+
+```bash
+.venv/bin/python scripts/configure_github.py
+```
+
+This stores your private DOCX (gzip/base64), profile and an encryption key as GitHub Secrets through stdin. It sets Hyderabad, 60 days' notice, and INR 12–14 lakh annual CTC. It uses the reviewed email extracted from your resume for both the recipient and default Gmail sender. It does not print secrets or commit private data. Review `profile.yaml` before and after setup. A compressed resume exceeding GitHub's secret-size limit is rejected with instructions. Back up `private/state-key` securely and retain it for existing checkpoints.
+
+Add `GEMINI_API_KEY` and `GMAIL_APP_PASSWORD` under Repository Settings → Secrets and variables → Actions. The script supplies `PROFILE_YAML`, `RESUME_GZIP_B64`, `STATE_KEY`, and `GMAIL_ADDRESS`. You may override the model with the `GEMINI_MODEL` repository variable. Then set `JOB_AGENT_ENABLED=true` and manually run **Twice daily job search** with `bootstrap=true` **only on the first run**. Future scheduled runs restore the checkpoint automatically.
+
+No secrets have been installed by this code change and the schedule is not yet activated. No Gemini or Gmail call was made during development.
+
+### Checkpoint privacy and limits
+
+Artifacts contain only Fernet-encrypted state; no plaintext resume/profile/database artifact is uploaded. The key remains in GitHub Secrets. Restore accepts only this workflow's default-branch scheduled/manual runs. A missing, expired or undecryptable checkpoint stops the run; it never silently resets deduplication. Every successful restore is followed by an encrypted save step, including partial run progress when possible. Concurrency is serialized.
+
+Artifacts are retained for 7 days. Each successful run refreshes the checkpoint, but after a longer outage you must restore a backup or consciously bootstrap again. Abrupt runner termination/upload failure can still lose that run's changes and repeat a digest. This is rolling checkpoint storage, not a guaranteed permanent backup. Artifact storage has separate quotas; monitor it. Never expose the key or run untrusted code with these secrets.
+
+### Application review on hosted Actions
+
+A hosted runner cannot display an interactive browser on your desktop. Scheduled runs email application links and resumes for manual review/submission. The local `job-agent apply` helper still works with local state, but desktop changes are not automatically synchronized with cloud state. After submitting, manually run the Actions workflow with `application_id` and `evidence` to record the confirmed application in the cloud report. Leave `bootstrap=false`. These inputs record YOUR confirmation and never submit a form.
+
+### Company and salary criteria
+
+The confirmed salary target is INR 12–14 lakh annual CTC. Gemini extracts a maximum annual INR budget only with an exact JD evidence quote. Explicit budgets below INR 12 lakh are excluded; undisclosed budgets remain eligible. This does not invent an offer or fill a job-specific salary answer without review.
+
+Company policy is strictly **greater than 3.5/5**, and company category must be `mnc` or `startup`. The platform is awaiting your choice of AmbitionBox or Glassdoor. Unknown, stale (over 30 days), unsupported or unverified ratings are held as `rating_pending`; they are never estimated by Gemini. Add verified company records in the private profile and rerun the configuration script:
+
+```yaml
+company_policy:
+  enabled: true
+  source: ambitionbox  # or glassdoor, after confirmation
+  above: 3.5
+  max_age_days: 30
+  verified_ratings:
+    - company: Exact employer name
+      aliases: []
+      category: mnc  # or startup
+      source: ambitionbox
+      rating: 4.0
+      url: https://www.ambitionbox.com/ACTUAL-COMPANY-RATING-PAGE
+      checked_on: YYYY-MM-DD
+```
+
+The record above is a schema example, not a verified company. There is no automated licensed ratings feed configured. Until platform and real evidence are provided, this filter deliberately holds all companies. Discovery searches the configured sources; it cannot guarantee coverage of every Indian MNC/startup or every career portal. Company-specific ATS board lists still need configuration.
+
+### Cost
+
+Standard GitHub-hosted runners are free for public repositories. GitHub Free includes 2,000 minutes/month and 500 MB artifact storage for private repositories, shared with other account usage. Two 10-minute runs/day is approximately 600 minutes/month; actual search durations vary. This workflow has a 25-minute timeout per run. Larger runners, excess storage/usage and external services have separate billing. Use GitHub billing budgets with stop-usage enabled where available if you require zero overage. Gemini free-tier quotas are separate; no paid model fallback is configured.
+
+Sources checked 2026-10-09: [GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions), [artifact retention](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts).
 
 ## Daily report and recovery
 
@@ -120,7 +165,7 @@ An email failure leaves prepared items unsent for retry, including when their di
 .venv/bin/python -m pytest -q
 ```
 
-Tests cover time boundaries, timestamp uncertainty, ID-preserving URL normalization, persisted deduplication, resume claim/format/employer preservation, rejected invented evidence, formula-injection prevention, IST daily reporting, fill-only behavior, and an offline dry-run that fails if Gmail or Gemini is called. CI runs the same suite. Live source/Gemini/Gmail and real application forms need a credentialed smoke test after setup.
+Tests cover time boundaries, timestamp uncertainty, ID-preserving URL normalization, persisted deduplication, encrypted checkpoint round-trip/wrong-key rejection, strict company-rating filters, resume claim/format/employer preservation, rejected invented evidence, formula-injection prevention, IST daily reporting, fill-only behavior, and an offline dry-run that fails if Gmail or Gemini is called. CI runs the same suite. Live source/Gemini/Gmail and real application forms need a credentialed smoke test after setup.
 
 ## Existing free/open-source options evaluated
 
@@ -132,12 +177,9 @@ Tests cover time boundaries, timestamp uncertainty, ID-preserving URL normalizat
 
 A small custom agent was selected to preserve DOCX formatting and enforce manual submission. Research checked 2026-10-09. API documentation: [Gemini models](https://ai.google.dev/gemini-api/docs/models), [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing), [structured outputs](https://ai.google.dev/gemini-api/docs/structured-output), [Greenhouse Job Board](https://docs.greenhouse.io/job-board.html), [Lever postings](https://github.com/lever/postings-api).
 
-## Remaining setup answers
+## Remaining activation requirements
 
-- Which Gmail address should receive digests? Sender and recipient can be the same.
-- What are your current city, notice period, current/expected compensation and work authorization?
-- Which companies should the Greenhouse/Lever/Workday adapters monitor?
-- Strict verified 12-hour results only, or include separately labeled uncertain-date postings?
-- VM cron or a dedicated self-hosted GitHub Actions runner?
-
-Keep credentials in `.env` / GitHub Secrets, not in answers posted publicly.
+- Choose AmbitionBox or Glassdoor and supply verified rating records or an authorized data feed.
+- Add Gmail app password and Gemini API key directly to GitHub Secrets.
+- Upload the private profile/resume with the configuration script, merge, and run the explicit first bootstrap.
+- Review the first digest before relying on scheduled results.

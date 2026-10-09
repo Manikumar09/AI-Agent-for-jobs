@@ -153,3 +153,35 @@ def test_source_failure_is_reported(monkeypatch):
     jobs, errors = sources.discover({'sites': [], 'roles': [], 'locations': [], 'lever': ['example']})
     assert jobs == []
     assert errors == ['lever/example: TimeoutError']
+
+
+@pytest.mark.parametrize('score,expected', [(3.5, 'rating_below_threshold'), (3.6, 'eligible'), (5.1, 'rating_pending')])
+def test_company_rating_strict_threshold(score, expected):
+    from jobagent.ratings import company_status
+    config = {'company_policy': {'enabled': True, 'source': 'ambitionbox', 'above': 3.5, 'verified_ratings': [
+        {'company': 'Example', 'source': 'ambitionbox', 'url': 'https://www.ambitionbox.com/example',
+         'checked_on': '2026-10-09', 'rating': score, 'category': 'startup'}]}}
+    assert company_status('EXAMPLE', config, AT.date()) == expected
+
+
+def test_missing_rating_fails_closed():
+    from jobagent.ratings import company_status
+    assert company_status('Unknown', {'company_policy': {'enabled': True}}, AT.date()) == 'rating_pending'
+
+
+def test_encrypted_checkpoint_roundtrip(tmp_path, monkeypatch):
+    import importlib.util
+    from pathlib import Path
+    from cryptography.fernet import Fernet, InvalidToken
+    spec = importlib.util.spec_from_file_location('cloud', Path(__file__).parents[1] / 'scripts/cloud.py')
+    cloud = importlib.util.module_from_spec(spec); spec.loader.exec_module(cloud)
+    monkeypatch.setenv('STATE_KEY', Fernet.generate_key().decode())
+    root = tmp_path/'src'
+    store = Store(root/'state/jobs.db'); store.add(job(), AT)
+    blob = cloud.pack(root)
+    assert b'SQLite' not in blob
+    target = tmp_path/'target'
+    cloud.unpack(blob, target)
+    assert Store(target/'state/jobs.db').get(job().id)['status'] == 'discovered'
+    monkeypatch.setenv('STATE_KEY', Fernet.generate_key().decode())
+    with pytest.raises(InvalidToken): cloud.unpack(blob, tmp_path/'bad')

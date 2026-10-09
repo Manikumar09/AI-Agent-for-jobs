@@ -26,3 +26,18 @@ answers:
   current_salary: ""
   expected_salary: ""
   work_authorization: ""
+
+# Fail closed until the rating platform and attributable records are configured.
+company_policy:
+  enabled: true
+  source: null  # ambitionbox or glassdoor: user confirmation required
+  above: 3.5
+  max_age_days: 30
+  verified_ratings: []
+# Confirmed target: INR 12–14 lakh annual CTC, depending on employer budget.
+salary_preference:
+  currency: INR
+  period: annual_ctc
+  minimum_lpa: 12
+  maximum_lpa: 14
+  unit_confirmed: true

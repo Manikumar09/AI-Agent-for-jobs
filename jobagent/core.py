@@ -61,6 +61,9 @@ class Analysis(BaseModel):
     location_reason: str
     missing_skills: list[str]
     rationale: str
+    salary_max_lpa: float | None = None
+    salary_explicit_annual_inr: bool = False
+    salary_quote: str = ''
     # Extractive tailoring: exact original paragraphs are appended as highlights.
     highlight_ids: list[int] = Field(max_length=5)
 
