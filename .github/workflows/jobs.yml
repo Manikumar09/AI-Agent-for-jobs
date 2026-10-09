@@ -1,0 +1,32 @@
+name: Twice daily job search
+on:
+  schedule:
+    - cron: '30 3,15 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: job-agent-production
+  cancel-in-progress: false
+jobs:
+  search:
+    # Configure a dedicated VM runner. Never run pull-request code on it.
+    if: vars.JOB_AGENT_ENABLED == 'true'
+    runs-on: [self-hosted, linux, job-agent]
+    timeout-minutes: 90
+    steps:
+      # Persistent deployment is deliberately outside Actions' ephemeral checkout.
+      # Deploy reviewed code with git pull on the VM; no untrusted PR checkout here.
+      - name: Run installed agent
+        env:
+          JOB_AGENT_INSTALL_DIR: ${{ vars.JOB_AGENT_INSTALL_DIR }}
+          JOB_AGENT_HOME: ${{ vars.JOB_AGENT_HOME }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          DIGEST_TO: ${{ secrets.DIGEST_TO }}
+        run: |
+          test -n "$JOB_AGENT_INSTALL_DIR"
+          test -n "$JOB_AGENT_HOME"
+          bash "$JOB_AGENT_INSTALL_DIR/run.sh"

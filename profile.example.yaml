@@ -1,0 +1,28 @@
+resume: private/resume.docx
+experience_years: 4
+roles: [Site Reliability Engineer, Observability Engineer, DevOps Engineer]
+locations: [India, Remote]
+sites: [indeed, linkedin, naukri]
+# Actual company board tokens, not company display names. Empty means disabled.
+greenhouse: []
+lever: []
+# Workday tenant configuration is company-specific; example in README.
+workday: []
+minimum_score: 65
+max_jobs_per_run: 8
+results_per_search: 25
+# Date-only/unknown postings are reported separately, never called last-12h verified.
+include_unverified: false
+# All form values must be explicitly provided by you. Never inferred by the LLM.
+answers:
+  full_name: ""
+  first_name: ""
+  last_name: ""
+  email: ""
+  phone: ""
+  linkedin: ""
+  location: ""
+  notice_period: ""
+  current_salary: ""
+  expected_salary: ""
+  work_authorization: ""
